@@ -1,0 +1,91 @@
+@Metadata.layer: #CORE
+@UI: {
+  headerInfo: { typeName: 'Sales Order', typeNamePlural: 'Sales Orders', title: { type: #STANDARD, value: 'SalesOrderId' } }
+}
+annotate entity ZBSJ_C_SO_HEADER with
+{
+  @UI.facet: [
+  { id: 'Header', purpose: #STANDARD, type: #IDENTIFICATION_REFERENCE, label: 'General Information', position: 10 },
+  
+  
+  // Items shifted to position 30 to appear below the Material Data
+  { id: 'Items', purpose: #STANDARD, type: #LINEITEM_REFERENCE, label: 'Items', position: 30, targetElement: '_Item' }
+  ]
+  
+ @UI: { 
+    lineItem: [{ position: 10 }], 
+    identification: [
+      { position: 10 },
+      { type: #FOR_ACTION, dataAction: 'CreateMaterial', label: 'Create New Material' }
+    ], 
+    selectionField: [{ position: 10 }] 
+  }
+    SalesOrderId;
+
+  @UI: { lineItem: [{ position: 20 }], identification: [{ position: 20 }], selectionField: [{ position: 20 }] }
+  OrderType;
+
+  // Properly hidden without layout conflicts
+  @UI.hidden: true
+  OrderTypeDesc;
+
+  @UI: { lineItem: [{ position: 40 }], identification: [{ position: 40 }]}
+  CompanyCode;
+
+  @UI: { lineItem: [{ position: 50 }], identification: [{ position: 50 }] }
+  SalesOrg;
+
+  @UI: { lineItem: [{ position: 60 }], identification: [{ position: 60 }], selectionField: [{ position: 60 }] }
+  CustomerId;
+
+  @UI.hidden: true
+  MaterialId;
+
+  @UI: { lineItem: [{ position: 70 }], identification: [{ position: 70 }] }
+  OrderDate;
+
+  @UI: { lineItem: [{ position: 80 }], identification: [{ position: 80 }] }
+  ReqDeliveryDate;
+
+  @UI: { lineItem: [{ position: 90 }], identification: [{ position: 90 }]}
+  NetAmount;
+
+  @UI: { lineItem: [{ position: 100 }], identification: [{ position: 100 }] }
+  TaxAmount;
+
+  @UI: { lineItem: [{ position: 110 }], identification: [{ position: 110 }] }
+  GrossAmount;
+
+  // Properly hidden
+  @UI.hidden: true
+  Currency;
+
+  @UI: { lineItem: [{ position: 130 }], identification: [{ position: 130 }], selectionField: [{ position: 140 }] }
+  OverallStatus;
+
+  @UI: { lineItem: [{ position: 140 }], identification: [{ position: 140 }] }
+  DeliveryStatus;
+
+  @UI: { lineItem: [{ position: 150 }], identification: [{ position: 150 }] }
+  BillingStatus;
+
+  @UI: { lineItem: [{ position: 160 }], identification: [{ position: 160 }] }
+  PaymentStatus;
+
+  // All Administrative fields properly hidden without layout conflicts
+  @UI.hidden: true
+  LocalCreatedBy;
+
+  @UI.hidden: true
+  LocalCreatedAt;
+
+  @UI.hidden: true
+  LocalLastChangedBy;
+
+  @UI.hidden: true
+  LocalLastChangedAt;
+
+  @UI.hidden: true
+  LastChangedAt;
+
+}

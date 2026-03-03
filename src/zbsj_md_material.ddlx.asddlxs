@@ -1,0 +1,46 @@
+@Metadata.layer: #CORE
+
+@UI: {
+  headerInfo: { 
+    typeName: 'Material', 
+    typeNamePlural: 'Materials', 
+    title: { type: #STANDARD, value: 'MaterialName' },
+    description: { type: #STANDARD, value: 'MaterialId' }
+  }
+}
+annotate entity ZBSJ_C_MATERIAL with
+{
+  @UI.facet: [ 
+    { 
+      id: 'MaterialDetails', 
+      purpose: #STANDARD, 
+      type: #IDENTIFICATION_REFERENCE, 
+      label: 'Material Details', 
+      position: 10 
+    } 
+  ]
+
+  @UI: { lineItem:       [{ position: 10, importance: #HIGH }], 
+         identification: [{ position: 10 }] }
+  MaterialId;
+
+  @UI: { lineItem:       [{ position: 20, importance: #HIGH }], 
+         identification: [{ position: 20 }] }
+  MaterialName;
+
+  @UI: { lineItem:       [{ position: 30, importance: #MEDIUM }], 
+         identification: [{ position: 30 }] }
+  BaseUom;
+
+  @UI: { lineItem:       [{ position: 40, importance: #HIGH }], 
+         identification: [{ position: 40 }] }
+  UnitPrice;
+
+  @UI: { lineItem:       [{ position: 50, importance: #MEDIUM }], 
+         identification: [{ position: 50 }] }
+  TaxCode;
+
+  @UI: { lineItem:       [{ position: 60, importance: #LOW }], 
+         identification: [{ position: 60 }] }
+  IsActive;
+}
