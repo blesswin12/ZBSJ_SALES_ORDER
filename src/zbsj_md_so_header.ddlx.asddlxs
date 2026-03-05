@@ -4,75 +4,150 @@
 }
 annotate entity ZBSJ_C_SO_HEADER with
 {
-  @UI.facet: [
-  { id: 'Header', purpose: #STANDARD, type: #IDENTIFICATION_REFERENCE, label: 'General Information', position: 10 },
-  
-  
-  // Items shifted to position 30 to appear below the Material Data
-  { id: 'Items', purpose: #STANDARD, type: #LINEITEM_REFERENCE, label: 'Items', position: 30, targetElement: '_Item' }
-  ]
-  
- @UI: { 
-    lineItem: [{ position: 10 }], 
-    identification: [
-      { position: 10 },
-      { type: #FOR_ACTION, dataAction: 'CreateMaterial', label: 'Create New Material' }
-    ], 
-    selectionField: [{ position: 10 }] 
-  }
-    SalesOrderId;
+   @UI.facet: [
+    // 1. Parent Facet (The invisible container holding both side-by-side sections)
+    { id: 'GeneralInfo', 
+      purpose: #STANDARD, 
+      type: #COLLECTION, 
+      label: 'General Information', 
+      position: 10 },
 
-  @UI: { lineItem: [{ position: 20 }], identification: [{ position: 20 }], selectionField: [{ position: 20 }] }
+    // 2. Left Section: Sales Order Details
+    { id: 'OrderDetails', 
+      parentId: 'GeneralInfo', 
+      purpose: #STANDARD, 
+      type: #FIELDGROUP_REFERENCE, 
+      label: 'Sales Order Details', 
+      targetQualifier: 'OrderDetails_FG', 
+      position: 10 },
+
+    // 3. Right Section: Status Information
+    { id: 'StatusDetails', 
+      parentId: 'GeneralInfo', 
+      purpose: #STANDARD, 
+      type: #FIELDGROUP_REFERENCE, 
+      label: 'Status Information', 
+      targetQualifier: 'StatusDetails_FG', 
+      position: 20 },
+
+    // 4. Line Items for the child items at the bottom of the page
+    { id: 'Items', 
+      purpose: #STANDARD, 
+      type: #LINEITEM_REFERENCE, 
+      label: 'Items', 
+      position: 30, 
+      targetElement: '_Item' }
+  ]
+
+@UI: {
+     lineItem: [{ position: 10 }],
+     fieldGroup: [
+       { position: 10, qualifier: 'OrderDetails_FG' },
+       { type: #FOR_ACTION, dataAction: 'CreateMaterial', label: 'Create New Material', qualifier: 'OrderDetails_FG' }
+     ],
+     selectionField: [{ position: 10 }]
+   }
+  SalesOrderId;
+
+  @UI: { lineItem: [{ position: 20 }], fieldGroup: [{ position: 20, qualifier: 'OrderDetails_FG' }], selectionField: [{ position: 20 }] }
   OrderType;
 
-  // Properly hidden without layout conflicts
-  @UI.hidden: true
-  OrderTypeDesc;
-
-  @UI: { lineItem: [{ position: 40 }], identification: [{ position: 40 }]}
+  @UI: { lineItem: [{ position: 40 }], fieldGroup: [{ position: 40, qualifier: 'OrderDetails_FG' }]}
   CompanyCode;
 
-  @UI: { lineItem: [{ position: 50 }], identification: [{ position: 50 }] }
+  @UI: { lineItem: [{ position: 50 }], fieldGroup: [{ position: 50, qualifier: 'OrderDetails_FG' }] }
+  @Consumption.valueHelpDefinition: [{ entity: { name: 'ZBSJ_I_SALES_ORG_VH', element: 'SalesOrg' } }]
   SalesOrg;
 
-  @UI: { lineItem: [{ position: 60 }], identification: [{ position: 60 }], selectionField: [{ position: 60 }] }
+  @UI: {
+    lineItem: [
+      { position: 60 },
+      { type: #FOR_ACTION, dataAction: 'createNewCustomer', label: 'Create New Customer' }
+    ],
+    fieldGroup: [
+      { position: 60, qualifier: 'OrderDetails_FG' },
+      { type: #FOR_ACTION, dataAction: 'createNewCustomer', label: 'Create New Customer', qualifier: 'OrderDetails_FG' }
+    ],
+    selectionField: [{ position: 60 }]
+  }
   CustomerId;
 
   @UI.hidden: true
   MaterialId;
 
-  @UI: { lineItem: [{ position: 70 }], identification: [{ position: 70 }] }
+  @UI: { lineItem: [{ position: 70 }], fieldGroup: [{ position: 70, qualifier: 'OrderDetails_FG' }] }
   OrderDate;
 
-  @UI: { lineItem: [{ position: 80 }], identification: [{ position: 80 }] }
+  @UI: { lineItem: [{ position: 80 }], fieldGroup: [{ position: 80, qualifier: 'OrderDetails_FG' }] }
   ReqDeliveryDate;
 
-  @UI: { lineItem: [{ position: 90 }], identification: [{ position: 90 }]}
+  @UI: { lineItem: [{ position: 90 }], fieldGroup: [{ position: 90, qualifier: 'OrderDetails_FG' }]}
   NetAmount;
 
-  @UI: { lineItem: [{ position: 100 }], identification: [{ position: 100 }] }
+  @UI: { lineItem: [{ position: 100 }], fieldGroup: [{ position: 100, qualifier: 'OrderDetails_FG' }] }
   TaxAmount;
 
-  @UI: { lineItem: [{ position: 110 }], identification: [{ position: 110 }] }
+  @UI: { lineItem: [{ position: 110 }], fieldGroup: [{ position: 110, qualifier: 'OrderDetails_FG' }] }
   GrossAmount;
 
-  // Properly hidden
   @UI.hidden: true
   Currency;
 
-  @UI: { lineItem: [{ position: 130 }], identification: [{ position: 130 }], selectionField: [{ position: 140 }] }
+  // --- RIGHT SIDE: STATUS DETAILS ---
+
+   @UI: { 
+    lineItem: [
+      { position: 130, criticality: 'OverallCriticality' }
+    ], 
+    fieldGroup: [
+      { position: 130, criticality: 'OverallCriticality', qualifier: 'StatusDetails_FG' }
+    ],
+    textArrangement: #TEXT_ONLY
+  }
   OverallStatus;
 
-  @UI: { lineItem: [{ position: 140 }], identification: [{ position: 140 }] }
+  @UI: {
+    lineItem: [
+      { position: 140, criticality: 'DeliveryCriticality' },
+      { type: #FOR_ACTION, dataAction: 'setDelivered', label: 'Mark as Delivered', inline: true }
+    ],
+    fieldGroup: [
+      { position: 140, criticality: 'DeliveryCriticality', qualifier: 'StatusDetails_FG' },
+      { type: #FOR_ACTION, dataAction: 'setDelivered', label: 'Mark as Delivered', qualifier: 'StatusDetails_FG' },
+      { type: #FOR_ACTION, dataAction: 'setNotDelivered', label: 'Reverse Delivery', qualifier: 'StatusDetails_FG' }
+    ],
+    textArrangement: #TEXT_ONLY
+  }
   DeliveryStatus;
 
-  @UI: { lineItem: [{ position: 150 }], identification: [{ position: 150 }] }
+  @UI: {
+   lineItem: [
+     { position: 150, criticality: 'BillingCriticality' },
+     { type: #FOR_ACTION, dataAction: 'setBilled', label: 'Mark as Billed', inline: true }
+   ],
+   fieldGroup: [
+     { position: 150, criticality: 'BillingCriticality', qualifier: 'StatusDetails_FG' },
+     { type: #FOR_ACTION, dataAction: 'setBilled', label: 'Mark as Billed', qualifier: 'StatusDetails_FG' },
+     { type: #FOR_ACTION, dataAction: 'setNotBilled', label: 'Reverse Billing', qualifier: 'StatusDetails_FG' }
+   ],
+   textArrangement: #TEXT_ONLY
+  }
   BillingStatus;
 
-  @UI: { lineItem: [{ position: 160 }], identification: [{ position: 160 }] }
+  @UI: {
+     lineItem: [
+       { position: 160, criticality: 'PaymentCriticality' },
+       { type: #FOR_ACTION, dataAction: 'setPaid', label: 'Mark as Paid', inline: true }
+     ],
+     fieldGroup: [
+       { position: 160, criticality: 'PaymentCriticality', qualifier: 'StatusDetails_FG' },
+       { type: #FOR_ACTION, dataAction: 'setPaid', label: 'Mark as Paid', qualifier: 'StatusDetails_FG' },
+       { type: #FOR_ACTION, dataAction: 'setNotPaid', label: 'Reverse Payment', qualifier: 'StatusDetails_FG' }
+     ],
+     textArrangement: #TEXT_ONLY
+   }
   PaymentStatus;
-
-  // All Administrative fields properly hidden without layout conflicts
+  
   @UI.hidden: true
   LocalCreatedBy;
 
@@ -87,5 +162,14 @@ annotate entity ZBSJ_C_SO_HEADER with
 
   @UI.hidden: true
   LastChangedAt;
+
+  @UI.hidden: true
+  DeliveryStatusText;
+
+  @UI.hidden: true
+  PaymentStatusText;
+
+  @UI.hidden: true
+  BillingStatusText;
 
 }

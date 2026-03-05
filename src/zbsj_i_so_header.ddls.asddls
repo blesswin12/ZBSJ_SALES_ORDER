@@ -33,6 +33,60 @@ association [0..1] to ZBSJ_I_CUSTOMER   as _Customer  on $projection.CustomerId 
     local_last_changed_by as LocalLastChangedBy,
     local_last_changed_at as LocalLastChangedAt,
     last_changed_at as LastChangedAt,
+      case delivery_status
+        when 'D' then 3 
+        when 'N' then 1 
+        else 0          
+      end as DeliveryCriticality,
+      // 2. Calculate Color for Payment
+      case payment_status
+        when 'P' then 3 
+        when 'N' then 1 
+        else 0          
+      end as PaymentCriticality,
+      
+      cast( case delivery_status
+        when 'D' then 'Delivered'
+        when 'N' then 'Not Delivered'
+        else 'Unknown'
+      end as abap.char( 20 ) ) as DeliveryStatusText,
+
+      // 2. Generate Text for Payment
+       cast( case payment_status
+        when 'P' then 'Paid'
+        when 'N' then 'Unpaid'
+        else 'Unknown'
+      end as abap.char( 20 ) ) as PaymentStatusText,
+      
+      // 3. Color and Text for Billing
+      case billing_status
+        when 'B' then 3 
+        when 'N' then 1 
+        else 0          
+      end as BillingCriticality,
+
+      cast( case billing_status
+        when 'B' then 'Billed'
+        when 'N' then 'Not Billed'
+        else 'Unknown'
+      end as abap.char( 20 ) ) as BillingStatusText,
+      
+      case overall_status
+        when 'C' then 3 
+        when 'P' then 2 
+        when 'O' then 2 
+        when 'X' then 1 
+        else 0
+      end as OverallCriticality,
+
+      cast( case overall_status
+        when 'C' then 'Completed'
+        when 'P' then 'In Process'
+        when 'O' then 'Open'
+        when 'X' then 'Cancelled'
+        else 'Unknown'
+      end as abap.char( 20 ) ) as OverallStatusText,
+      
     _Item,
     _Customer,
     _Company,

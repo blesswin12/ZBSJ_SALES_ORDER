@@ -9,11 +9,18 @@ define behavior for ZBSJ_C_SO_HEADER alias SalesOrder
   use update;
   use delete;
   use action CreateMaterial;
+  use action createNewCustomer;
   use action Edit;
   use action Activate;
   use action Discard;
   use action Resume;
   use action Prepare;
+  use action setDelivered;
+  use action setPaid;
+  use action setBilled;
+   use action setNotDelivered;
+  use action setNotPaid;
+  use action setNotBilled;
 
   use association _Item { create; with draft; }
 }

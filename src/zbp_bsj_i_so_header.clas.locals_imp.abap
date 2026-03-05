@@ -15,6 +15,32 @@ CLASS lhc_SalesOrder DEFINITION INHERITING FROM cl_abap_behavior_handler.
 
     METHODS CreateMaterial FOR MODIFY
       IMPORTING keys FOR ACTION SalesOrder~CreateMaterial RESULT result.
+    METHODS createNewCustomer FOR MODIFY
+      IMPORTING keys FOR ACTION SalesOrder~createNewCustomer RESULT result.
+    METHODS validateSalesOrg FOR VALIDATE ON SAVE
+      IMPORTING keys FOR SalesOrder~validateSalesOrg.
+    METHODS get_instance_features FOR INSTANCE FEATURES
+      IMPORTING keys REQUEST requested_features FOR SalesOrder RESULT result.
+
+    METHODS setDelivered FOR MODIFY
+      IMPORTING keys FOR ACTION SalesOrder~setDelivered RESULT result.
+
+    METHODS setPaid FOR MODIFY
+      IMPORTING keys FOR ACTION SalesOrder~setPaid RESULT result.
+    METHODS setInitialStatus FOR DETERMINE ON MODIFY
+      IMPORTING keys FOR SalesOrder~setInitialStatus.
+    METHODS setBilled FOR MODIFY
+      IMPORTING keys FOR ACTION SalesOrder~setBilled RESULT result.
+    METHODS setNotBilled FOR MODIFY
+      IMPORTING keys FOR ACTION SalesOrder~setNotBilled RESULT result.
+
+    METHODS setNotDelivered FOR MODIFY
+      IMPORTING keys FOR ACTION SalesOrder~setNotDelivered RESULT result.
+
+    METHODS setNotPaid FOR MODIFY
+      IMPORTING keys FOR ACTION SalesOrder~setNotPaid RESULT result.
+    METHODS calculateOverallStatus FOR DETERMINE ON MODIFY
+      IMPORTING keys FOR SalesOrder~calculateOverallStatus.
 
 ENDCLASS.
 
@@ -56,7 +82,7 @@ CLASS lhc_SalesOrder IMPLEMENTATION.
 
   METHOD RecalcTotalPrice.
     DATA: headers_for_update TYPE TABLE FOR UPDATE zbsj_i_so_header,
-          items_for_update   TYPE TABLE FOR UPDATE zbsj_i_so_item.
+          items_for_update   TYPE TABLE FOR UPDATE zbsj_i_so_header\\SalesOrderItem.
     " 1. Read Header Data
     READ ENTITIES OF zbsj_i_so_header IN LOCAL MODE
       ENTITY SalesOrder
@@ -90,7 +116,8 @@ CLASS lhc_SalesOrder IMPLEMENTATION.
         TRY.
             DATA(item) = items[ KEY id %tky = item_link-target-%tky ].
             " ---> NEW: Handle empty quantities safely (default to 1 if blank to avoid multiplying by 0)
-            DATA(lv_quantity) = COND #( WHEN item-Quantity > 0 THEN item-Quantity ELSE 1 ).
+            DATA lv_quantity LIKE item-Quantity.
+            lv_quantity = COND #( WHEN item-Quantity > 0 THEN item-Quantity ELSE 1 ).
 
             " ---> NEW: Multiply the item's Net and Tax by the Quantity
             " ---> NEW: Safely inherit the exact data type (with decimals) first
@@ -142,17 +169,34 @@ CLASS lhc_SalesOrder IMPLEMENTATION.
   ENDMETHOD.
 
   METHOD calculateTotalPrice.
-    MODIFY ENTITIES OF zbsj_i_so_header IN LOCAL MODE
-      ENTITY SalesOrder
-        EXECUTE RecalcTotalPrice
-        FROM CORRESPONDING #( keys ).
+    DATA unique_orders TYPE TABLE FOR ACTION IMPORT zbsj_i_so_header~RecalcTotalPrice.
+
+    " DO NOT use READ ENTITIES here! Extract the SalesOrderId directly from the keys:
+    LOOP AT keys INTO DATA(ls_item_key).
+      APPEND VALUE #(
+        SalesOrderId = ls_item_key-SalesOrderId
+        %is_draft    = ls_item_key-%is_draft
+      ) TO unique_orders.
+    ENDLOOP.
+
+    " Remove duplicates
+    SORT unique_orders BY SalesOrderId %is_draft.
+    DELETE ADJACENT DUPLICATES FROM unique_orders COMPARING SalesOrderId %is_draft.
+
+    " Trigger the internal calculation action on the Header
+    IF unique_orders IS NOT INITIAL.
+      MODIFY ENTITIES OF zbsj_i_so_header IN LOCAL MODE
+        ENTITY SalesOrder
+          EXECUTE RecalcTotalPrice
+          FROM unique_orders.
+    ENDIF.
   ENDMETHOD.
 
   METHOD CreateMaterial.
-   LOOP AT keys INTO DATA(key).
+    LOOP AT keys INTO DATA(key).
 
       " 2. Use EML to create an independent Material record
-      MODIFY ENTITIES OF ZBSJ_I_MATERIAL
+      MODIFY ENTITIES OF zbsj_i_material
         ENTITY Material
         CREATE FIELDS ( MaterialId MaterialName BaseUom UnitPrice Currency TaxCode )
         WITH VALUE #( (
@@ -170,12 +214,323 @@ CLASS lhc_SalesOrder IMPLEMENTATION.
     ENDLOOP.
 
     " 3. Read the current Sales Order to return it back to the UI (required for $self actions)
-    READ ENTITIES OF ZBSJ_I_SO_HEADER IN LOCAL MODE
+    READ ENTITIES OF zbsj_i_so_header IN LOCAL MODE
       ENTITY SalesOrder
       ALL FIELDS WITH CORRESPONDING #( keys )
       RESULT DATA(sales_orders).
 
     result = VALUE #( FOR so IN sales_orders ( %tky = so-%tky %param = so ) ).
+  ENDMETHOD.
+
+  METHOD createNewCustomer.
+    DATA customers_to_create TYPE TABLE FOR CREATE zbsj_i_customer.
+
+    LOOP AT keys INTO DATA(key).
+      APPEND VALUE #(
+          %cid         = 'NEW_CUST_' && sy-tabix
+          CustomerId   = key-%param-customer_id " Remove if ID is auto-generated
+          CustomerName = key-%param-customer_name
+          Phone        = key-%param-phone
+          Email        = key-%param-email
+          Address      = key-%param-address
+          City         = key-%param-city
+          Country      = key-%param-country
+          CreditLimit  = key-%param-credit_limit
+          Currency     = key-%param-currency
+          IsActive     = key-%param-is_active
+      ) TO customers_to_create.
+    ENDLOOP.
+
+    " 3. Call the Customer BO to physically create the record on the database
+    MODIFY ENTITIES OF zbsj_i_customer
+      ENTITY Customer
+        CREATE FIELDS ( CustomerId CustomerName Phone Email Address City Country CreditLimit Currency IsActive )
+        WITH customers_to_create
+      MAPPED DATA(mapped_customer)
+      FAILED DATA(failed_customer)
+      REPORTED DATA(reported_customer).
+
+    " 4. Read the current Sales Order to return it to the UI (required for result $self)
+    READ ENTITIES OF zbsj_i_so_header IN LOCAL MODE
+      ENTITY SalesOrder
+        ALL FIELDS WITH CORRESPONDING #( keys )
+      RESULT DATA(sales_orders).
+
+
+    result = VALUE #( FOR so IN sales_orders (
+        %tky   = so-%tky
+        %param = so
+    ) ).
+  ENDMETHOD.
+
+  METHOD validateSalesOrg.
+    " 1. Read the SalesOrg values entered by the user
+    READ ENTITIES OF zbsj_i_so_header IN LOCAL MODE
+      ENTITY SalesOrder
+        FIELDS ( SalesOrg )
+        WITH CORRESPONDING #( keys )
+      RESULT DATA(sales_orders).
+
+    " 2. Loop through the records to validate
+    LOOP AT sales_orders INTO DATA(sales_order).
+
+      " 3. Clear the state area so old duplicate messages are removed [6]
+      APPEND VALUE #(
+          %tky        = sales_order-%tky
+          %state_area = 'VALIDATE_SALES_ORG'
+      ) TO reported-salesorder.
+
+      " Skip validation if the field is empty
+      CHECK sales_order-SalesOrg IS NOT INITIAL.
+
+      " 4. Check if the entered SalesOrg exists in the database table
+      SELECT SINGLE @abap_true
+        FROM zbsj_sales_org_m
+        WHERE sales_org = @sales_order-SalesOrg
+        INTO @DATA(exists).
+
+      " 5. If it does not exist, return the failed key and the new message
+      IF exists = abap_false.
+        " Mark the instance as failed
+        APPEND VALUE #( %tky = sales_order-%tky ) TO failed-salesorder.
+
+        " Attach the specific message to the UI [7]
+        APPEND VALUE #(
+            %tky        = sales_order-%tky
+            %state_area = 'VALIDATE_SALES_ORG'
+            %msg        = new_message(
+                            id       = 'ZBSJ_MSG_CLASS' " Your new Message Class [3]
+                            number   = '001'            " Your Message Number [3]
+                            severity = if_abap_behv_message=>severity-error
+                            v1       = sales_order-SalesOrg " Passes the bad ID into the &1 placeholder [8]
+                          )
+            %element-SalesOrg = if_abap_behv=>mk-on " Highlights the specific field in red on the UI [9]
+        ) TO reported-salesorder.
+      ENDIF.
+
+    ENDLOOP.
+  ENDMETHOD.
+
+  METHOD get_instance_features.
+    " 1. Read the current status of the Sales Orders
+    READ ENTITIES OF zbsj_i_so_header IN LOCAL MODE
+      ENTITY SalesOrder
+      FIELDS ( DeliveryStatus PaymentStatus BillingStatus )
+      WITH CORRESPONDING #( keys )
+      RESULT DATA(sales_orders).
+
+    " 2. Enable or Disable the buttons based on the status
+    result = VALUE #( FOR so IN sales_orders (
+                        %tky                 = so-%tky
+
+                        " Disable 'Mark as Delivered' if already Delivered ('D')
+                        %action-setDelivered = COND #( WHEN so-DeliveryStatus = 'D'
+                                                       THEN if_abap_behv=>fc-o-disabled
+                                                       ELSE if_abap_behv=>fc-o-enabled )
+                         %action-setNotDelivered = COND #( WHEN so-DeliveryStatus = 'N'
+                                                       THEN if_abap_behv=>fc-o-disabled
+                                                       ELSE if_abap_behv=>fc-o-enabled )
+
+
+                        " Disable 'Mark as Paid' if already Paid ('P')
+                        %action-setPaid      = COND #( WHEN so-PaymentStatus = 'P'
+                                                       THEN if_abap_behv=>fc-o-disabled
+                                                       ELSE if_abap_behv=>fc-o-enabled )
+                        %action-setNotPaid      = COND #( WHEN so-PaymentStatus = 'N'
+                                                       THEN if_abap_behv=>fc-o-disabled
+                                                       ELSE if_abap_behv=>fc-o-enabled )
+
+                        " Disable 'Mark as Billed' if already Billed ('B')
+                        %action-setBilled    = COND #( WHEN so-BillingStatus = 'B'
+                                                       THEN if_abap_behv=>fc-o-disabled
+                                                       ELSE if_abap_behv=>fc-o-enabled )
+                        %action-setNotBilled    = COND #( WHEN so-BillingStatus = 'N'
+                                                       THEN if_abap_behv=>fc-o-disabled
+                                                       ELSE if_abap_behv=>fc-o-enabled )
+                    ) ).
+  ENDMETHOD.
+
+  METHOD setDelivered.
+    MODIFY ENTITIES OF zbsj_i_so_header IN LOCAL MODE
+        ENTITY SalesOrder
+        UPDATE FIELDS ( DeliveryStatus DeliveryCriticality DeliveryStatusText )
+        WITH VALUE #( FOR key IN keys (
+                        %tky                = key-%tky
+                        DeliveryStatus      = 'D'
+                        DeliveryCriticality = 3
+                        DeliveryStatusText  = 'Delivered'
+                    ) ).
+
+    " 2. Read the updated record to pass back to the UI
+    READ ENTITIES OF zbsj_i_so_header IN LOCAL MODE
+      ENTITY SalesOrder
+      ALL FIELDS WITH CORRESPONDING #( keys )
+      RESULT DATA(sales_orders).
+
+    " 3. Return the updated instance
+    result = VALUE #( FOR so IN sales_orders ( %tky = so-%tky %param = CORRESPONDING #( so ) ) ).
+  ENDMETHOD.
+
+  METHOD setPaid.
+    " 1. Change Status, Text, and Color
+    MODIFY ENTITIES OF zbsj_i_so_header IN LOCAL MODE
+      ENTITY SalesOrder
+      UPDATE FIELDS ( PaymentStatus PaymentCriticality PaymentStatusText )
+      WITH VALUE #( FOR key IN keys (
+                      %tky               = key-%tky
+                      PaymentStatus      = 'P'
+                      PaymentCriticality = 3
+                      PaymentStatusText  = 'Paid'
+                  ) ).
+
+    " 2. Read the updated record to pass back to the UI
+    READ ENTITIES OF zbsj_i_so_header IN LOCAL MODE
+      ENTITY SalesOrder
+      ALL FIELDS WITH CORRESPONDING #( keys )
+      RESULT DATA(sales_orders).
+
+    " 3. Return the updated instance
+    result = VALUE #( FOR so IN sales_orders ( %tky = so-%tky %param = CORRESPONDING #( so ) ) ).
+  ENDMETHOD.
+  METHOD setBilled.
+    " 1. Change Status, Text, and Color for Billing
+    MODIFY ENTITIES OF zbsj_i_so_header IN LOCAL MODE
+      ENTITY SalesOrder
+      UPDATE FIELDS ( BillingStatus BillingCriticality BillingStatusText )
+      WITH VALUE #( FOR key IN keys (
+                      %tky               = key-%tky
+                      BillingStatus      = 'B'
+                      BillingCriticality = 3
+                      BillingStatusText  = 'Billed'
+                  ) ).
+
+    " 2. Read the updated record to pass back to the UI
+    READ ENTITIES OF zbsj_i_so_header IN LOCAL MODE
+      ENTITY SalesOrder
+      ALL FIELDS WITH CORRESPONDING #( keys )
+      RESULT DATA(sales_orders).
+
+    " 3. Return the updated instance
+    result = VALUE #( FOR so IN sales_orders ( %tky = so-%tky %param = CORRESPONDING #( so ) ) ).
+  ENDMETHOD.
+
+  METHOD setInitialStatus.
+    " 1. Read the newly created Sales Orders in local mode
+    READ ENTITIES OF zbsj_i_so_header IN LOCAL MODE
+      ENTITY SalesOrder
+      FIELDS ( OverallStatus DeliveryStatus BillingStatus PaymentStatus )
+      WITH CORRESPONDING #( keys )
+      RESULT DATA(sales_orders).
+
+    " 2. Automatically update statuses, texts, and colors if they are blank
+    MODIFY ENTITIES OF zbsj_i_so_header IN LOCAL MODE
+      ENTITY SalesOrder
+      UPDATE FIELDS ( OverallStatus DeliveryStatus BillingStatus PaymentStatus
+                      DeliveryCriticality DeliveryStatusText
+                      PaymentCriticality PaymentStatusText
+                      BillingCriticality BillingStatusText ) " <--- ONLY BILLING ADDED
+      WITH VALUE #( FOR so IN sales_orders (
+                      %tky                = so-%tky
+
+                      " Status Codes
+                      OverallStatus       = COND #( WHEN so-OverallStatus IS INITIAL THEN 'O' ELSE so-OverallStatus )
+                      DeliveryStatus      = COND #( WHEN so-DeliveryStatus IS INITIAL THEN 'N' ELSE so-DeliveryStatus )
+                      BillingStatus       = COND #( WHEN so-BillingStatus IS INITIAL THEN 'N' ELSE so-BillingStatus )
+                      PaymentStatus       = COND #( WHEN so-PaymentStatus IS INITIAL THEN 'N' ELSE so-PaymentStatus )
+
+                      " Explicitly set Draft Text and Colors
+                      DeliveryCriticality = COND #( WHEN so-DeliveryStatus IS INITIAL THEN 1 ELSE so-DeliveryCriticality )
+                      DeliveryStatusText  = COND #( WHEN so-DeliveryStatus IS INITIAL THEN 'Not Delivered' ELSE so-DeliveryStatusText )
+
+                      PaymentCriticality  = COND #( WHEN so-PaymentStatus IS INITIAL THEN 1 ELSE so-PaymentCriticality )
+                      PaymentStatusText   = COND #( WHEN so-PaymentStatus IS INITIAL THEN 'Unpaid' ELSE so-PaymentStatusText )
+
+                      " --- ADDED BILLING ---
+                      BillingCriticality  = COND #( WHEN so-BillingStatus IS INITIAL THEN 1 ELSE so-BillingCriticality )
+                      BillingStatusText   = COND #( WHEN so-BillingStatus IS INITIAL THEN 'Not Billed' ELSE so-BillingStatusText )
+                  ) ).
+  ENDMETHOD.
+
+
+  METHOD setNotBilled.
+    MODIFY ENTITIES OF zbsj_i_so_header IN LOCAL MODE
+      ENTITY SalesOrder
+      UPDATE FIELDS ( BillingStatus BillingCriticality BillingStatusText )
+      WITH VALUE #( FOR key IN keys ( %tky = key-%tky BillingStatus = 'N' BillingCriticality = 1 BillingStatusText = 'Not Billed' ) ).
+
+    READ ENTITIES OF zbsj_i_so_header IN LOCAL MODE ENTITY SalesOrder ALL FIELDS WITH CORRESPONDING #( keys ) RESULT DATA(sales_orders).
+    result = VALUE #( FOR so IN sales_orders ( %tky = so-%tky %param = CORRESPONDING #( so ) ) ).
+  ENDMETHOD.
+
+  METHOD setNotDelivered.
+    MODIFY ENTITIES OF zbsj_i_so_header IN LOCAL MODE
+      ENTITY SalesOrder
+      UPDATE FIELDS ( DeliveryStatus DeliveryCriticality DeliveryStatusText )
+      WITH VALUE #( FOR key IN keys ( %tky = key-%tky DeliveryStatus = 'N' DeliveryCriticality = 1 DeliveryStatusText = 'Not Delivered' ) ).
+
+    READ ENTITIES OF zbsj_i_so_header IN LOCAL MODE ENTITY SalesOrder ALL FIELDS WITH CORRESPONDING #( keys ) RESULT DATA(sales_orders).
+    result = VALUE #( FOR so IN sales_orders ( %tky = so-%tky %param = CORRESPONDING #( so ) ) ).
+  ENDMETHOD.
+
+  METHOD setNotPaid.
+    MODIFY ENTITIES OF zbsj_i_so_header IN LOCAL MODE
+      ENTITY SalesOrder
+      UPDATE FIELDS ( PaymentStatus PaymentCriticality PaymentStatusText )
+      WITH VALUE #( FOR key IN keys ( %tky = key-%tky PaymentStatus = 'N' PaymentCriticality = 1 PaymentStatusText = 'Unpaid' ) ).
+
+    READ ENTITIES OF zbsj_i_so_header IN LOCAL MODE ENTITY SalesOrder ALL FIELDS WITH CORRESPONDING #( keys ) RESULT DATA(sales_orders).
+    result = VALUE #( FOR so IN sales_orders ( %tky = so-%tky %param = CORRESPONDING #( so ) ) ).
+  ENDMETHOD.
+
+
+  METHOD calculateOverallStatus.
+    " 1. Read the current state of the Delivery, Billing, and Payment statuses
+    READ ENTITIES OF zbsj_i_so_header IN LOCAL MODE
+      ENTITY SalesOrder
+      FIELDS ( DeliveryStatus BillingStatus PaymentStatus )
+      WITH CORRESPONDING #( keys )
+      RESULT DATA(sales_orders).
+
+    " 2. Prepare an internal table to hold our updates
+    DATA update_tab TYPE TABLE FOR UPDATE zbsj_i_so_header.
+
+    " ADDED: Explicitly declare the structure type so VALUE #( ) knows what to build
+    DATA ls_update LIKE LINE OF update_tab.
+
+    " 3. Evaluate the logic for each order
+    LOOP AT sales_orders INTO DATA(so).
+      " REMOVED DATA() inline declaration here:
+      ls_update = VALUE #( %tky = so-%tky ).
+
+      IF so-DeliveryStatus = 'N' AND so-BillingStatus = 'N' AND so-PaymentStatus = 'N'.
+        " Not Delivered + Not Billed + Unpaid -> Open
+        ls_update-OverallStatus      = 'O'.
+        ls_update-OverallStatusText  = 'Open'.
+        ls_update-OverallCriticality = 2.
+
+      ELSEIF so-DeliveryStatus = 'D' AND so-BillingStatus = 'B' AND so-PaymentStatus = 'P'.
+        " Delivered + Billed + Paid -> Completed
+        ls_update-OverallStatus      = 'C'.
+        ls_update-OverallStatusText  = 'Completed'.
+        ls_update-OverallCriticality = 3.
+
+      ELSE.
+        " Any other mixed combination (e.g., Delivered but Unpaid) -> In Process
+        ls_update-OverallStatus      = 'P'.
+        ls_update-OverallStatusText  = 'In Process'.
+        ls_update-OverallCriticality = 2.
+      ENDIF.
+
+      APPEND ls_update TO update_tab.
+    ENDLOOP.
+
+    " 4. Apply the changes to the Overall Status fields
+    IF update_tab IS NOT INITIAL.
+      MODIFY ENTITIES OF zbsj_i_so_header IN LOCAL MODE
+        ENTITY SalesOrder
+        UPDATE FIELDS ( OverallStatus OverallCriticality OverallStatusText )
+        WITH update_tab.
+    ENDIF.
   ENDMETHOD.
 
 ENDCLASS.
@@ -198,20 +553,20 @@ CLASS lhc_SalesOrderItem IMPLEMENTATION.
   ENDMETHOD.
 
   METHOD determineMaterialDefaults.
-   READ ENTITIES OF ZBSJ_I_SO_HEADER IN LOCAL MODE
-      ENTITY SalesOrderItem
-        FIELDS ( MaterialId )
-        WITH CORRESPONDING #( keys )
-      RESULT DATA(items).
+    READ ENTITIES OF zbsj_i_so_header IN LOCAL MODE
+       ENTITY SalesOrderItem
+         FIELDS ( MaterialId )
+         WITH CORRESPONDING #( keys )
+       RESULT DATA(items).
 
-    DATA: items_for_update TYPE TABLE FOR UPDATE ZBSJ_I_SO_ITEM.
+    DATA: items_for_update TYPE TABLE FOR UPDATE zbsj_i_so_item.
 
     " 2. Loop through the items to fetch master data
     LOOP AT items INTO DATA(item) WHERE MaterialId IS NOT INITIAL.
 
       " Read the Unit Price and UoM directly from your Material CDS view
       SELECT SINGLE BaseUom, UnitPrice
-        FROM ZBSJ_I_MATERIAL
+        FROM zbsj_i_material
         WHERE MaterialId = @item-MaterialId
         INTO @DATA(material_data).
 
@@ -227,7 +582,7 @@ CLASS lhc_SalesOrderItem IMPLEMENTATION.
 
     " 4. Update the item in the draft/database
     IF items_for_update IS NOT INITIAL.
-      MODIFY ENTITIES OF ZBSJ_I_SO_HEADER IN LOCAL MODE
+      MODIFY ENTITIES OF zbsj_i_so_header IN LOCAL MODE
         ENTITY SalesOrderItem
           UPDATE FIELDS ( Uom NetValue )
           WITH items_for_update.

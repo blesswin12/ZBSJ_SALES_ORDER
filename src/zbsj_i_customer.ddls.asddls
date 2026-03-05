@@ -3,7 +3,7 @@
 @EndUserText.label: 'VIEW ENTITY - Customer Master'
 @Metadata.ignorePropagatedAnnotations: true
 @Search.searchable: true
-define view entity ZBSJ_I_CUSTOMER
+define root view entity ZBSJ_I_CUSTOMER
   as select from zbsj_customer
   association [0..1] to I_Country as _Country on $projection.Country = _Country.Country
 {
@@ -22,5 +22,7 @@ define view entity ZBSJ_I_CUSTOMER
       credit_limit  as CreditLimit,
       currency      as Currency,
       is_active     as IsActive,
+      last_changed_at as LastChangedAt,
+      locallastchangedat as LocalLastChangedAt,
       _Country
 }

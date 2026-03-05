@@ -11,7 +11,7 @@ define root view entity ZBSJ_C_SO_HEADER
   key SalesOrderId,
       @Consumption.valueHelpDefinition: [{
              entity: { name: 'ZBSJ_I_ORDER_TYPES', element: 'OrderType' }
-             }] 
+             }]
       OrderType,
       @Consumption.valueHelpDefinition: [{ entity: { name: 'ZBSJ_I_MATERIAL', element: 'MaterialId' } }]
       @ObjectModel.text.element: ['MaterialName']
@@ -36,17 +36,30 @@ define root view entity ZBSJ_C_SO_HEADER
       TaxAmount,
       @Semantics.amount.currencyCode: 'Currency'
       GrossAmount,
-      Currency,
+      Currency,    
       @EndUserText.label: 'Overall Status'
+      @ObjectModel.text.element: ['OverallStatusText']
       OverallStatus,
+      @ObjectModel.text.element: ['DeliveryStatusText']
       DeliveryStatus,
+      DeliveryStatusText,
+      @ObjectModel.text.element: ['BillingStatusText']
       BillingStatus,
+      BillingStatusText,
+      BillingCriticality,
+      @ObjectModel.text.element: ['PaymentStatusText']
       PaymentStatus,
+      PaymentStatusText,
       LocalCreatedBy,
       LocalCreatedAt,
       LocalLastChangedBy,
       LocalLastChangedAt,
       LastChangedAt,
+      DeliveryCriticality,
+      PaymentCriticality,
+      OverallStatusText,
+      OverallCriticality,
+
       /* Associations */
       _Company,
       _Currency,

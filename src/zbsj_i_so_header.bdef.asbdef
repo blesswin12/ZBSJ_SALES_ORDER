@@ -12,48 +12,79 @@ etag master LocalLastChangedAt
 {
   internal action RecalcTotalPrice;
   determination calculateTotalPrice on modify { create; field Currency; }
+  determination setInitialStatus on modify { create; }
+  determination calculateOverallStatus on modify { create; field DeliveryStatus, BillingStatus, PaymentStatus; }
   side effects
   {
+    entity _Item affects field GrossAmount, field NetAmount, field TaxAmount;
     field MaterialId affects entity _Material;
   }
+
 
   create ( authorization : global );
   update;
   delete;
+
   action CreateMaterial parameter ZBSJ_A_MATERIAL_PARAM result [1] $self;
+  action createNewCustomer parameter ZBSJ_A_NEW_CUSTOMER result [1] $self;
+
+  action ( features : instance ) setDelivered result [1] $self;
+  action ( features : instance ) setPaid result [1] $self;
+  action ( features : instance ) setBilled result [1] $self;
+
+  action ( features : instance ) setNotDelivered result [1] $self;
+  action ( features : instance ) setNotPaid result [1] $self;
+  action ( features : instance ) setNotBilled result [1] $self;
+
+  validation validateSalesOrg on save { create; field SalesOrg; }
   draft action Edit;
   draft action Activate optimized;
   draft action Discard;
   draft action Resume;
-  draft determine action Prepare;
+  draft determine action Prepare
+  {
+    validation validateSalesOrg;
+  }
 
   field ( mandatory : create, readonly : update ) SalesOrderId;
   field ( readonly ) GrossAmount, NetAmount, TaxAmount, LocalCreatedAt, LocalCreatedBy, LocalLastChangedAt, LocalLastChangedBy, LastChangedAt;
+
+  field ( readonly ) DeliveryStatus, BillingStatus, PaymentStatus, DeliveryCriticality, PaymentCriticality, DeliveryStatusText, PaymentStatusText;
+  field ( readonly ) BillingCriticality, BillingStatusText;
+  field ( readonly ) OverallStatus, OverallCriticality, OverallStatusText;
   association _Item { create; with draft; }
 
   mapping for zbsj_so_header
     {
-      SalesOrderId       = sales_order_id;
-      MaterialId         = material_id;
-      OrderType          = order_type;
-      CompanyCode        = company_code;
-      SalesOrg           = sales_org;
-      CustomerId         = customer_id;
-      OrderDate          = order_date;
-      ReqDeliveryDate    = req_delivery_date;
-      NetAmount          = net_amount;
-      TaxAmount          = tax_amount;
-      GrossAmount        = gross_amount;
-      Currency           = currency;
-      OverallStatus      = overall_status;
-      DeliveryStatus     = delivery_status;
-      BillingStatus      = billing_status;
-      PaymentStatus      = payment_status;
-      LocalCreatedBy     = local_created_by;
-      LocalCreatedAt     = local_created_at;
-      LocalLastChangedBy = local_last_changed_by;
-      LocalLastChangedAt = local_last_changed_at;
-      LastChangedAt      = last_changed_at;
+      SalesOrderId        = sales_order_id;
+      MaterialId          = material_id;
+      OrderType           = order_type;
+      CompanyCode         = company_code;
+      SalesOrg            = sales_org;
+      CustomerId          = customer_id;
+      OrderDate           = order_date;
+      ReqDeliveryDate     = req_delivery_date;
+      NetAmount           = net_amount;
+      TaxAmount           = tax_amount;
+      GrossAmount         = gross_amount;
+      Currency            = currency;
+      OverallStatus       = overall_status;
+      DeliveryStatus      = delivery_status;
+      BillingStatus       = billing_status;
+      PaymentStatus       = payment_status;
+      LocalCreatedBy      = local_created_by;
+      LocalCreatedAt      = local_created_at;
+      LocalLastChangedBy  = local_last_changed_by;
+      LocalLastChangedAt  = local_last_changed_at;
+      LastChangedAt       = last_changed_at;
+      DeliveryCriticality = delivery_criticality;
+      PaymentCriticality  = payment_criticality;
+      DeliveryStatusText  = delivery_status_text;
+      PaymentStatusText   = payment_status_text;
+      BillingCriticality  = billing_criticality;
+      BillingStatusText   = billing_status_text;
+      OverallCriticality = overall_criticality;
+      OverallStatusText  = overall_status_text;
     }
 }
 
@@ -64,7 +95,7 @@ lock dependent by _Header
 authorization dependent by _Header
 etag master LocalLastChangedAt
 {
-  determination calculateTotalPrice on modify { create; field Quantity, NetValue, TaxValue; }
+  determination calculateTotalPrice on modify { create; delete; field Quantity, NetValue, TaxValue; }
   determination determineMaterialDefaults on modify { field MaterialId; }
   side effects
   {
@@ -73,6 +104,7 @@ etag master LocalLastChangedAt
     field TaxValue affects field _Header.GrossAmount, field _Header.NetAmount, field _Header.TaxAmount, field GrossValue;
     field MaterialId affects field Uom, field NetValue, field GrossValue,
         field _Header.GrossAmount, field _Header.NetAmount, field _Header.TaxAmount;
+
 
 
   }
