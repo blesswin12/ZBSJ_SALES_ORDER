@@ -26,6 +26,7 @@ define behavior for ZBSJ_C_SO_HEADER alias SalesOrder
 }
 
 define behavior for ZBSJ_C_SO_ITEM alias SalesOrderItem
+use etag
 {
   use update;
   use delete;

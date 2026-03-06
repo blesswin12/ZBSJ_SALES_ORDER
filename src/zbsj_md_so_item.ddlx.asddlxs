@@ -51,7 +51,10 @@ annotate entity ZBSJ_C_SO_ITEM
   GrossValue;
 
   @UI: { lineItem:       [{ position: 70 }], 
-         identification: [{ position: 70 }] }
+         identification: [{ position: 70 }],
+         textArrangement: #TEXT_ONLY
+         
+         }
   ItemStatus;
 
   /* Hide Administrative Fields from the UI */

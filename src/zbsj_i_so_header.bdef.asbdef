@@ -18,6 +18,8 @@ etag master LocalLastChangedAt
   {
     entity _Item affects field GrossAmount, field NetAmount, field TaxAmount;
     field MaterialId affects entity _Material;
+    action setDelivered affects entity _Item;
+    action setNotDelivered affects entity _Item;
   }
 
 
@@ -37,6 +39,7 @@ etag master LocalLastChangedAt
   action ( features : instance ) setNotBilled result [1] $self;
 
   validation validateSalesOrg on save { create; field SalesOrg; }
+  validation validateDates on save { create; update; field ReqDeliveryDate, OrderDate; }
   draft action Edit;
   draft action Activate optimized;
   draft action Discard;
@@ -44,6 +47,7 @@ etag master LocalLastChangedAt
   draft determine action Prepare
   {
     validation validateSalesOrg;
+    validation validateDates;
   }
 
   field ( mandatory : create, readonly : update ) SalesOrderId;
@@ -97,6 +101,10 @@ etag master LocalLastChangedAt
 {
   determination calculateTotalPrice on modify { create; delete; field Quantity, NetValue, TaxValue; }
   determination determineMaterialDefaults on modify { field MaterialId; }
+  determination setInitialItemStatus on modify { create; }
+  determination setInitialUom on modify { create; }
+  determination setInitialQuantity on modify { create; }
+
   side effects
   {
     field Quantity affects field _Header.GrossAmount, field _Header.NetAmount, field _Header.TaxAmount;
@@ -112,7 +120,10 @@ etag master LocalLastChangedAt
   update;
   delete;
   field ( mandatory : create, readonly : update ) ItemNo;
-  field ( readonly ) SalesOrderId, GrossValue, LocalCreatedAt, LocalCreatedBy, LocalLastChangedAt, LocalLastChangedBy;
+  field ( readonly ) SalesOrderId, GrossValue, LocalCreatedAt, LocalCreatedBy, LocalLastChangedAt, LocalLastChangedBy, ItemStatusText;
+
+  field ( readonly ) ItemStatus;
+
   association _Header { with draft; }
 
   mapping for zbsj_so_item
@@ -131,6 +142,7 @@ etag master LocalLastChangedAt
       LocalCreatedAt     = local_created_at;
       LocalLastChangedBy = local_last_changed_by;
       LocalLastChangedAt = local_last_changed_at;
+      ItemStatusText = item_status_text;
     }
 
 }

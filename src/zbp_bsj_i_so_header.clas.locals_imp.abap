@@ -41,6 +41,8 @@ CLASS lhc_SalesOrder DEFINITION INHERITING FROM cl_abap_behavior_handler.
       IMPORTING keys FOR ACTION SalesOrder~setNotPaid RESULT result.
     METHODS calculateOverallStatus FOR DETERMINE ON MODIFY
       IMPORTING keys FOR SalesOrder~calculateOverallStatus.
+    METHODS validateDates FOR VALIDATE ON SAVE
+      IMPORTING keys FOR SalesOrder~validateDates.
 
 ENDCLASS.
 
@@ -50,6 +52,13 @@ CLASS lhc_SalesOrderItem DEFINITION INHERITING FROM cl_abap_behavior_handler.
       IMPORTING keys FOR SalesOrderItem~calculateTotalPrice.
     METHODS determineMaterialDefaults FOR DETERMINE ON MODIFY
       IMPORTING keys FOR SalesOrderItem~determineMaterialDefaults.
+    METHODS setInitialItemStatus FOR DETERMINE ON MODIFY
+      IMPORTING keys FOR SalesOrderItem~setInitialItemStatus.
+    METHODS setInitialUom FOR DETERMINE ON MODIFY
+      IMPORTING keys FOR SalesOrderItem~setInitialUom.
+    METHODS setInitialQuantity FOR DETERMINE ON MODIFY
+      IMPORTING keys FOR SalesOrderItem~setInitialQuantity.
+
 ENDCLASS.
 
 CLASS lhc_SalesOrder IMPLEMENTATION.
@@ -351,25 +360,49 @@ CLASS lhc_SalesOrder IMPLEMENTATION.
   ENDMETHOD.
 
   METHOD setDelivered.
+    " 1. Update the Header Status to Delivered ('D')
     MODIFY ENTITIES OF zbsj_i_so_header IN LOCAL MODE
-        ENTITY SalesOrder
-        UPDATE FIELDS ( DeliveryStatus DeliveryCriticality DeliveryStatusText )
-        WITH VALUE #( FOR key IN keys (
-                        %tky                = key-%tky
-                        DeliveryStatus      = 'D'
-                        DeliveryCriticality = 3
-                        DeliveryStatusText  = 'Delivered'
-                    ) ).
+      ENTITY SalesOrder
+      UPDATE FIELDS ( DeliveryStatus DeliveryCriticality DeliveryStatusText )
+      WITH VALUE #( FOR key IN keys (
+                      %tky                = key-%tky
+                      DeliveryStatus      = 'D'
+                      DeliveryCriticality = 3
+                      DeliveryStatusText  = 'Delivered'
+                  ) ).
 
-    " 2. Read the updated record to pass back to the UI
+    " ==========================================================
+    " 2. NEW: Read all associated Items for the selected Orders
+    " ==========================================================
+    READ ENTITIES OF zbsj_i_so_header IN LOCAL MODE
+      ENTITY SalesOrder BY \_Item     " <--- Ensure this matches your association name
+      FIELDS ( ItemStatus )
+      WITH CORRESPONDING #( keys )
+      RESULT DATA(items).
+
+    " 3. NEW: Update the Item Status to Delivered ('D')
+    IF items IS NOT INITIAL.
+      MODIFY ENTITIES OF zbsj_i_so_header IN LOCAL MODE
+        ENTITY SalesOrderItem
+        UPDATE FIELDS ( ItemStatus ItemStatusText  )
+        WITH VALUE #( FOR item IN items (
+                        %tky       = item-%tky
+                        ItemStatus = 'D'
+                        ItemStatusText = 'Delivered'
+                    ) ).
+    ENDIF.
+    " ==========================================================
+
+    " 4. Read the updated record to pass back to the UI
     READ ENTITIES OF zbsj_i_so_header IN LOCAL MODE
       ENTITY SalesOrder
       ALL FIELDS WITH CORRESPONDING #( keys )
       RESULT DATA(sales_orders).
 
-    " 3. Return the updated instance
+    " 5. Return the updated instance
     result = VALUE #( FOR so IN sales_orders ( %tky = so-%tky %param = CORRESPONDING #( so ) ) ).
   ENDMETHOD.
+
 
   METHOD setPaid.
     " 1. Change Status, Text, and Color
@@ -463,12 +496,45 @@ CLASS lhc_SalesOrder IMPLEMENTATION.
   ENDMETHOD.
 
   METHOD setNotDelivered.
+    " 1. Update the Header Status to Not Delivered ('N')
     MODIFY ENTITIES OF zbsj_i_so_header IN LOCAL MODE
       ENTITY SalesOrder
       UPDATE FIELDS ( DeliveryStatus DeliveryCriticality DeliveryStatusText )
-      WITH VALUE #( FOR key IN keys ( %tky = key-%tky DeliveryStatus = 'N' DeliveryCriticality = 1 DeliveryStatusText = 'Not Delivered' ) ).
+      WITH VALUE #( FOR key IN keys (
+                      %tky                = key-%tky
+                      DeliveryStatus      = 'N'
+                      DeliveryCriticality = 1
+                      DeliveryStatusText  = 'Not Delivered'
+                  ) ).
 
-    READ ENTITIES OF zbsj_i_so_header IN LOCAL MODE ENTITY SalesOrder ALL FIELDS WITH CORRESPONDING #( keys ) RESULT DATA(sales_orders).
+    " ==========================================================
+    " 2. NEW: Read all associated Items for the selected Orders
+    " ==========================================================
+    READ ENTITIES OF zbsj_i_so_header IN LOCAL MODE
+      ENTITY SalesOrder BY \_Item     " <--- Ensure this matches your association name
+      FIELDS ( ItemStatus )
+      WITH CORRESPONDING #( keys )
+      RESULT DATA(items).
+
+    " 3. NEW: Update the Item Status back to Open ('O')
+    IF items IS NOT INITIAL.
+      MODIFY ENTITIES OF zbsj_i_so_header IN LOCAL MODE
+        ENTITY SalesOrderItem
+        UPDATE FIELDS ( ItemStatus ItemStatusText  )
+        WITH VALUE #( FOR item IN items (
+                        %tky       = item-%tky
+                        ItemStatus = 'O'
+                         ItemStatusText = 'Open'
+                    ) ).
+    ENDIF.
+    " ==========================================================
+
+    " 4. Read the updated record to pass back to the UI
+    READ ENTITIES OF zbsj_i_so_header IN LOCAL MODE
+      ENTITY SalesOrder
+      ALL FIELDS WITH CORRESPONDING #( keys )
+      RESULT DATA(sales_orders).
+
     result = VALUE #( FOR so IN sales_orders ( %tky = so-%tky %param = CORRESPONDING #( so ) ) ).
   ENDMETHOD.
 
@@ -533,6 +599,57 @@ CLASS lhc_SalesOrder IMPLEMENTATION.
     ENDIF.
   ENDMETHOD.
 
+  METHOD validateDates.
+    " 1. Read the necessary date fields from the transactional buffer
+    READ ENTITIES OF zbsj_i_so_header IN LOCAL MODE
+      ENTITY SalesOrder
+        FIELDS ( ReqDeliveryDate OrderDate )
+        WITH CORRESPONDING #( keys )
+      RESULT DATA(sales_orders).
+
+    " 2. Loop through the records to validate
+    LOOP AT sales_orders INTO DATA(order).
+
+      " Clear previous state messages for this validation to avoid duplicates
+      APPEND VALUE #( %tky        = order-%tky
+                      %state_area = 'VALIDATE_DATES' ) TO reported-salesorder.
+
+      " RULE 1: Delivery Date cannot be in the past
+      IF order-ReqDeliveryDate < cl_abap_context_info=>get_system_date( )
+         AND order-ReqDeliveryDate IS NOT INITIAL.
+
+        " Mark the instance as failed
+        APPEND VALUE #( %tky = order-%tky ) TO failed-salesorder.
+
+        " Report the error to the UI and highlight the Delivery Date field
+        APPEND VALUE #( %tky                     = order-%tky
+                        %state_area              = 'VALIDATE_DATES'
+                        " Note: Replace with your actual Message Class
+                        %msg                     = new_message_with_text( severity = if_abap_behv_message=>severity-error text = 'Delivery Date cannot be in the past' )
+                        %element-ReqDeliveryDate = if_abap_behv=>mk-on
+                      ) TO reported-salesorder.
+      ENDIF.
+
+      " RULE 2: Delivery Date must be on or after the Order Date
+      IF order-ReqDeliveryDate < order-OrderDate
+         AND order-OrderDate IS NOT INITIAL
+         AND order-ReqDeliveryDate IS NOT INITIAL.
+
+        APPEND VALUE #( %tky = order-%tky ) TO failed-salesorder.
+
+        " Report the error and highlight BOTH fields on the UI
+        APPEND VALUE #( %tky                     = order-%tky
+                        %state_area              = 'VALIDATE_DATES'
+                        " Note: Replace with your actual Message Class
+                        %msg                     = new_message_with_text( severity = if_abap_behv_message=>severity-error text = 'Delivery Date cannot be before Order Date' )
+                        %element-OrderDate       = if_abap_behv=>mk-on
+                        %element-ReqDeliveryDate = if_abap_behv=>mk-on
+                      ) TO reported-salesorder.
+      ENDIF.
+
+    ENDLOOP.
+  ENDMETHOD.
+
 ENDCLASS.
 
 CLASS lhc_SalesOrderItem IMPLEMENTATION.
@@ -587,6 +704,66 @@ CLASS lhc_SalesOrderItem IMPLEMENTATION.
           UPDATE FIELDS ( Uom NetValue )
           WITH items_for_update.
     ENDIF.
+  ENDMETHOD.
+
+  METHOD setInitialItemStatus.
+
+    READ ENTITIES OF zbsj_i_so_header IN LOCAL MODE
+      ENTITY SalesOrderItem
+        FIELDS ( ItemStatus )
+        WITH CORRESPONDING #( keys )
+      RESULT DATA(items).
+
+    " idempotence status field
+    DELETE items WHERE ItemStatus IS NOT INITIAL.
+    CHECK items IS NOT INITIAL.
+
+    " 3. Set the default status to 'O' (Open)
+    MODIFY ENTITIES OF zbsj_i_so_header IN LOCAL MODE
+     ENTITY SalesOrderItem
+       " ---> Add ItemStatusText to the fields being updated
+       UPDATE FIELDS ( ItemStatus ItemStatusText )
+       WITH VALUE #( FOR item IN items (
+                       %tky           = item-%tky
+                       ItemStatus     = 'O'
+                       ItemStatusText = 'Open'
+                   ) )
+   REPORTED DATA(update_reported).
+  ENDMETHOD.
+  METHOD setInitialUom.
+    " 1. Read the newly created items
+    READ ENTITIES OF zbsj_i_so_header IN LOCAL MODE
+      ENTITY SalesOrderItem
+        FIELDS ( Uom )
+        WITH CORRESPONDING #( keys )
+      RESULT DATA(items).
+
+    " 2. Update the UOM to 'KG' ONLY if it is currently empty
+    MODIFY ENTITIES OF zbsj_i_so_header IN LOCAL MODE
+      ENTITY SalesOrderItem
+        UPDATE FIELDS ( Uom )
+        WITH VALUE #( FOR item IN items
+                      WHERE ( Uom IS INITIAL ) " Idempotence check
+                      ( %tky = item-%tky
+                        Uom  = 'KG' ) ).
+  ENDMETHOD.
+
+  METHOD setInitialQuantity.
+    " 1. Read the newly created items
+    READ ENTITIES OF zbsj_i_so_header IN LOCAL MODE
+      ENTITY SalesOrderItem
+        FIELDS ( Quantity )
+        WITH CORRESPONDING #( keys )
+      RESULT DATA(items).
+
+    " 2. Update the Quantity to 1 ONLY if it is currently empty (0)
+    MODIFY ENTITIES OF zbsj_i_so_header IN LOCAL MODE
+      ENTITY SalesOrderItem
+        UPDATE FIELDS ( Quantity )
+        WITH VALUE #( FOR item IN items
+                      WHERE ( Quantity IS INITIAL ) " Idempotence check
+                      ( %tky     = item-%tky
+                        Quantity = 1 ) ).
   ENDMETHOD.
 
 ENDCLASS.

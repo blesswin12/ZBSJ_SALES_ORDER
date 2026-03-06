@@ -25,6 +25,12 @@ association [0..1] to ZBSJ_I_MATERIAL  as _Material
       @Semantics.amount.currencyCode: 'Currency'
     gross_value as GrossValue,
     item_status as ItemStatus,
+    cast(case item_status
+        when 'O' then 'Open'
+        when 'D' then 'Delivered'
+        when 'C' then 'Cancelled'
+        else 'Unknown'
+      end            as abap.char(20)) as ItemStatusText,
     local_created_by as LocalCreatedBy,
     local_created_at as LocalCreatedAt,
     local_last_changed_by as LocalLastChangedBy,
