@@ -24,6 +24,7 @@ association [0..1] to ZBSJ_I_MATERIAL  as _Material
     tax_value as TaxValue,
       @Semantics.amount.currencyCode: 'Currency'
     gross_value as GrossValue,
+    @ObjectModel.text.element: ['ItemStatusText']
     item_status as ItemStatus,
     cast(case item_status
         when 'O' then 'Open'
@@ -31,9 +32,17 @@ association [0..1] to ZBSJ_I_MATERIAL  as _Material
         when 'C' then 'Cancelled'
         else 'Unknown'
       end            as abap.char(20)) as ItemStatusText,
+ @Semantics.user.createdBy: true
     local_created_by as LocalCreatedBy,
+    
+    @Semantics.systemDateTime.createdAt: true
     local_created_at as LocalCreatedAt,
+    
+    @Semantics.user.localInstanceLastChangedBy: true
     local_last_changed_by as LocalLastChangedBy,
+    
+    // Local ETag Field
+    @Semantics.systemDateTime.localInstanceLastChangedAt: true
     local_last_changed_at as LocalLastChangedAt,
     _Header,
     _Material

@@ -1,0 +1,24 @@
+{
+  "formatVersion": "2",
+  "header": {
+    "description": "App Descriptor for Sales Order",
+    "originalLanguage": "en",
+    "abapLanguageVersion": "cloudDevelopment"
+  },
+  "generalInformation": {
+    "appType": "ui5",
+    "catalogId": "SAP_TC_ALV5_DEFAULT"
+  },
+  "ui5AppDetails": {
+    "appId": "zsalesorderapp"
+  },
+  "navigation": {
+    "targetMappingId": "ZBSJ_SO_LAUNCHPAD_TM",
+    "semanticObject": "SalesOrder",
+    "action": "manage",
+    "desktop": true,
+    "tablet": true,
+    "phone": true
+  },
+  "tiles": []
+}

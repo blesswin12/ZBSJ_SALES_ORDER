@@ -22,7 +22,9 @@ define root view entity ZBSJ_I_CUSTOMER
       credit_limit  as CreditLimit,
       currency      as Currency,
       is_active     as IsActive,
+      @Semantics.systemDateTime.lastChangedAt: true
       last_changed_at as LastChangedAt,
+      @Semantics.systemDateTime.localInstanceLastChangedAt: true
       locallastchangedat as LocalLastChangedAt,
       _Country
 }

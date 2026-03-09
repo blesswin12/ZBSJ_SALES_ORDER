@@ -1,0 +1,34 @@
+{
+  "formatVersion": "2",
+  "header": {
+    "description": "Sales Order Fiori App",
+    "originalLanguage": "en",
+    "abapLanguageVersion": "cloudDevelopment"
+  },
+  "generalInformation": {
+    "appType": "ui5",
+    "catalogId": "SAP_TC_UI5_REPO_UIAD",
+    "targetMappingTitle": "Manage Sales Orders"
+  },
+  "ui5AppDetails": {
+    "appId": "zsalesorderapp"
+  },
+  "navigation": {
+    "targetMappingId": "UI5R_59680C523E81B01510204AC050ED5DB81B296EB3_TM",
+    "semanticObject": "SalesOrder",
+    "action": "manage",
+    "desktop": true,
+    "tablet": true,
+    "phone": true
+  },
+  "tiles": [
+    {
+      "id": "UI5R_59680C523E81B01510204AC050ED5DB81B296EB3_AL",
+      "tileType": "static",
+      "isDefault": true,
+      "standard": {
+        "title": "Manage Sales Orders"
+      }
+    }
+  ]
+}

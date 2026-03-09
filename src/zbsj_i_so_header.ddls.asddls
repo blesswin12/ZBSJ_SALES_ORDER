@@ -28,11 +28,25 @@ association [0..1] to ZBSJ_I_CUSTOMER   as _Customer  on $projection.CustomerId 
     delivery_status as DeliveryStatus,
     billing_status as BillingStatus,
     payment_status as PaymentStatus,
-    local_created_by as LocalCreatedBy,
-    local_created_at as LocalCreatedAt,
-    local_last_changed_by as LocalLastChangedBy,
-    local_last_changed_at as LocalLastChangedAt,
-    last_changed_at as LastChangedAt,
+    // 1. User Type
+      @Semantics.user.createdBy: true
+      local_created_by as LocalCreatedBy,
+      
+      
+      @Semantics.systemDateTime.createdAt: true
+      local_created_at as LocalCreatedAt,
+      
+      // 3. User Type (Use 'lastChangedBy', not 'createdAt'!)
+      @Semantics.user.localInstanceLastChangedBy: true
+      local_last_changed_by as LocalLastChangedBy,
+      
+      // 4. Timestamp Type (Local ETag)
+      @Semantics.systemDateTime.localInstanceLastChangedAt: true
+      local_last_changed_at as LocalLastChangedAt,
+      
+      // 5. Timestamp Type (Total ETag)
+      @Semantics.systemDateTime.lastChangedAt: true
+      last_changed_at as LastChangedAt, 
       case delivery_status
         when 'D' then 3 
         when 'N' then 1 

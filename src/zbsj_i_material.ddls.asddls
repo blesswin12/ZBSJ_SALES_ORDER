@@ -6,6 +6,7 @@
 define root view entity ZBSJ_I_MATERIAL as select from zbsj_material
 association [0..1] to I_Currency as _Currency on $projection.Currency = _Currency.Currency
 {
+    @ObjectModel.text.element: ['MaterialName']
     key material_id as MaterialId,
     
     @Semantics.text: true                      
